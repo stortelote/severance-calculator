@@ -1,2 +1,155 @@
-# severance-calculator
-severance-calculator
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Brazil Severance Calculator</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: auto; }
+    label { display: block; margin-top: 10px; font-weight: bold; }
+    input, select { margin-top: 5px; width: 100%; padding: 5px; }
+    button { margin-top: 20px; padding: 10px 20px; }
+    #result { margin-top: 30px; padding: 15px; border: 1px solid #ccc; background: #f9f9f9; }
+  </style>
+</head>
+<body>
+
+  <h2>Brazil Severance Calculator</h2>
+
+  <label>Gross Monthly Salary (BRL):
+    <input type="number" id="salary" placeholder="e.g. 5000" />
+  </label>
+
+  <label>Admission Date:
+    <input type="date" id="admission" />
+  </label>
+
+  <label>Termination Date:
+    <input type="date" id="termination" />
+  </label>
+
+  <label>Termination Type:
+    <select id="terminationType">
+      <option value="involuntary">Involuntary (without cause)</option>
+      <option value="voluntary">Voluntary (resignation)</option>
+      <option value="withCause">With Cause</option>
+      <option value="mutual">Mutual Agreement</option>
+    </select>
+  </label>
+
+  <label>Unused Vacation Days:
+  <input type="number" id="unusedVacation" placeholder="e.g. 10" />
+  <small style="color: #555; display: block; margin-top: 5px;">
+    ⚠️ This information can be found in Workday under the <strong>Absence</strong> section.
+  </small>
+</label>
+
+  <label>Advance Notice:
+    <select id="notice">
+      <option value="indemnified">Indemnified</option>
+      <option value="worked">Worked</option>
+    </select>
+  </label>
+
+  <label>Include FGTS amount manually?
+    <select id="includeFgts">
+      <option value="no">No, calculate automatically</option>
+      <option value="yes">Yes, I will provide the total FGTS</option>
+    </select>
+  </label>
+
+  <label id="fgtsInputLabel" style="display: none;">Total FGTS Balance (BRL):
+    <input type="number" id="fgtsAmount" placeholder="e.g. 10000" />
+  </label>
+
+  <button onclick="calculate()">Calculate Severance</button>
+
+  <div id="result"></div>
+
+  <script>
+    document.getElementById("includeFgts").addEventListener("change", function () {
+      const fgtsInput = document.getElementById("fgtsInputLabel");
+      fgtsInput.style.display = this.value === "yes" ? "block" : "none";
+    });
+
+    function calculate() {
+      const salary = parseFloat(document.getElementById("salary").value);
+      const admission = new Date(document.getElementById("admission").value);
+      const termination = new Date(document.getElementById("termination").value);
+      const terminationType = document.getElementById("terminationType").value;
+      const unusedVacation = parseInt(document.getElementById("unusedVacation").value) || 0;
+      const noticeType = document.getElementById("notice").value;
+      const includeFgts = document.getElementById("includeFgts").value;
+      const fgtsProvided = parseFloat(document.getElementById("fgtsAmount").value) || 0;
+
+      if (isNaN(salary) || !admission || !termination || termination <= admission) {
+        document.getElementById("result").innerHTML = "Please enter valid data.";
+        return;
+      }
+
+      const monthsWorkedThisYear = termination.getMonth() + 1;
+      const totalMonthsWorked = (termination.getFullYear() - admission.getFullYear()) * 12 + (termination.getMonth() - admission.getMonth());
+
+      const proportional13th = (salary / 12) * monthsWorkedThisYear;
+      const proportionalVacation = (salary / 12) * monthsWorkedThisYear;
+      const vacationBonus = proportionalVacation / 3;
+      const unusedVacationPay = (salary / 30) * unusedVacation;
+      const unusedVacationBonus = unusedVacationPay / 3;
+      const advanceNoticeValue = noticeType === "indemnified" ? salary : 0;
+
+      let fgtsBase = includeFgts === "yes" ? fgtsProvided : salary * 0.08 * totalMonthsWorked;
+      let fgtsPenalty = 0;
+
+      let totalSeverance = 0;
+      let notes = "";
+
+      switch (terminationType) {
+        case "involuntary":
+          fgtsPenalty = fgtsBase * 0.40;
+          totalSeverance = proportional13th + proportionalVacation + vacationBonus +
+            unusedVacationPay + unusedVacationBonus + advanceNoticeValue + fgtsPenalty;
+          break;
+
+        case "voluntary":
+          fgtsPenalty = 0;
+          totalSeverance = proportional13th + proportionalVacation + vacationBonus +
+            unusedVacationPay + unusedVacationBonus;
+          if (noticeType === "indemnified") {
+            totalSeverance -= salary; // deduction if notice not worked
+            notes += "<p><strong>Note:</strong> Advance notice may be deducted from final pay.</p>";
+          }
+          break;
+
+        case "withCause":
+          fgtsPenalty = 0;
+          totalSeverance = unusedVacationPay + unusedVacationBonus;
+          notes += "<p><strong>Note:</strong> With cause terminations do not include 13th, vacation, or FGTS penalties.</p>";
+          break;
+
+        case "mutual":
+          fgtsPenalty = fgtsBase * 0.20;
+          const mutualNotice = advanceNoticeValue / 2;
+          totalSeverance = proportional13th + proportionalVacation + vacationBonus +
+            unusedVacationPay + unusedVacationBonus + mutualNotice + fgtsPenalty;
+          notes += "<p><strong>Note:</strong> FGTS penalty is 20%, and only 50% of advance notice is paid.</p>";
+          break;
+      }
+
+      document.getElementById("result").innerHTML = `
+        <h3>Estimated Severance</h3>
+        <p><strong>Termination Type:</strong> ${terminationType.replace(/^\w/, c => c.toUpperCase())}</p>
+        <p><strong>Proportional 13th Salary:</strong> R$ ${proportional13th.toFixed(2)}</p>
+        <p><strong>Proportional Vacation:</strong> R$ ${proportionalVacation.toFixed(2)}</p>
+        <p><strong>1/3 Vacation Bonus:</strong> R$ ${vacationBonus.toFixed(2)}</p>
+        <p><strong>Unused Vacation:</strong> R$ ${unusedVacationPay.toFixed(2)}</p>
+        <p><strong>1/3 Bonus on Unused Vacation:</strong> R$ ${unusedVacationBonus.toFixed(2)}</p>
+        <p><strong>Advance Notice:</strong> R$ ${advanceNoticeValue.toFixed(2)}</p>
+        <p><strong>FGTS Penalty:</strong> R$ ${fgtsPenalty.toFixed(2)}</p>
+        <hr>
+        <h3>Total Severance: R$ ${totalSeverance.toFixed(2)}</h3>
+        ${notes}
+      `;
+    }
+  </script>
+
+</body>
+</html>
